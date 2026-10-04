@@ -1170,9 +1170,10 @@ def build_land_layers(rec: dict) -> bytes:
     Split out of convert_LAND so the override path can rebuild the whole run
     from the PLUGIN's export when an author changes Layer[] (override_builder
     _RUN_LAND_LAYERS). The merge/sort/cap below is lossy and order-dependent,
-    so an override MUST reuse this function rather than reimplement it — two
-    implementations would disagree and the terrain would re-texture itself on
-    every unrelated edit.
+    so an override MUST reuse this function: two implementations would
+    disagree and re-texture the terrain on every unrelated edit. A quadrant
+    with alpha layers and no BASE is written without a BTXT.
+    See: docs/commentary/tes5_import_world.md#land-quadrants-without-a-base-layer
     """
     subs = b''
 
@@ -1223,11 +1224,10 @@ def build_land_layers(rec: dict) -> bytes:
             else:
                 alpha_layers[quad].append([tex, vtxt])
 
-    # Pass 2: emit base layers first, then sorted alpha layers
-    for quad in sorted(base_layers):
-        tex = base_layers[quad]
-        btxt = struct.pack('<IBBxx', tex, quad, 0)
-        subs += pack_subrecord('BTXT', btxt)
+    for quad in sorted(base_layers.keys() | alpha_layers.keys()):
+        if quad in base_layers:
+            btxt = struct.pack('<IBBxx', base_layers[quad], quad, 0)
+            subs += pack_subrecord('BTXT', btxt)
 
         layers_for_quad = alpha_layers.get(quad, [])
         # Sort by coverage score descending (sum of opacity values), keep top 6
