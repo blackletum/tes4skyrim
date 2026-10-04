@@ -42,6 +42,8 @@ CTDA_USE_GLOBAL = 0x04    # comparison value is a GLOB FormID, not a float
 
 # --- Dialogue-critical function indices (identical in both games) --------------
 FUNC_GET_IS_ID = 72            # GetIsID(ref)
+FUNC_GET_RANDOM_PERCENT = 77   # GetRandomPercent(), 0-99: a constant when compared with 0
+_SOURCE_PLAYER_NPC = 0x00000007  #: the source's Player NPC_, the base of every target-run "is the player" test
 
 # DIAL FormIDs (24-bit) whose INFOs are reached ONLY through a TES4
 # `Say <topic> <flag> <speak-as NPC> <flag>`.  Filled once per run by
@@ -574,6 +576,26 @@ def _target_run_on(func_idx: int, run_on_target_ref: 'int | None',
     return 1, 0
 
 
+def _settled_player_identity(type_byte: int, comp_raw: int, func_idx: int,
+                             param1: int, run_on_target_ref) -> 'bytes | None':
+    """A constant CTDA for a target GetIsID whose target is the player, else None.
+
+    The player is the source's Player NPC (0x7): GetIsID(Player) is 1, any
+    other actor 0. Returned with the source's OR flag.
+    See: docs/commentary/tes5_import_conditions.md#player-target-identity
+    """
+    if (func_idx != FUNC_GET_IS_ID or run_on_target_ref != _PLAYER_REF_FORMID
+            or not type_byte & CTDA_RUN_ON_TARGET):
+        return None
+    outcomes = bool_outcomes(type_byte, comp_raw)
+    if outcomes is None:
+        return None
+    passes = outcomes[0] if param1 == _SOURCE_PLAYER_NPC else outcomes[1]
+    return build_ctda(FUNC_GET_RANDOM_PERCENT, comp_value=0.0,
+                      operator=0x60 if passes else 0x80,
+                      is_or=bool(type_byte & CTDA_OR))
+
+
 def _ctda_head(raw: bytes, offset: int, in_speak_as_topic: bool):
     """The decoded fields of one source CTDA, a finished CTDA, or None to drop.
 
@@ -647,6 +669,10 @@ def convert_ctda(raw: bytes, offset: 'int | None' = None,
     if not isinstance(head, tuple):
         return head
     type_byte, comp_raw, func_idx, param1, param2, run_on, reference = head
+    settled = None if drop_run_on_target else _settled_player_identity(
+        type_byte, comp_raw, func_idx, param1, run_on_target_ref)
+    if settled:
+        return settled
     if type_byte & CTDA_USE_GLOBAL:
         comp_raw = _remap_global(comp_raw, offset)
     fame = _player_global(raw, type_byte, func_idx, param1)

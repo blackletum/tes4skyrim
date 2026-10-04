@@ -533,3 +533,23 @@ an identity function is likewise dropped: the listener IS the NPC the call
 site addresses, so the authored check is statically satisfied (first hit: the
 restored NPC-conversation head topics, whose GetIsID(listener)[Target]
 otherwise survived as a dead Run On = Target).
+
+<a id="player-target-identity"></a>**When the listener is the player, a
+target GetIsID is settled, not dropped** (`_settled_player_identity`). Dropping
+is only right when the test passes. Against the player, "target is the Player
+NPC" is true, but "target is Martin" and "target is not the player" are false.
+Dropping those made lines written for another listener play to the player.
+Oblivion's HELLO `000ADC6C` ("Good to see you.") is a Goodbye-flagged blocking
+line, so nobody starts a random conversation with Martin. With its
+`GetIsID(Martin)[Target]` dropped, only voice types were left. Every NPC with
+one of those voices greeted the player with it, and the Goodbye flag ended the
+talk before the menu opened (Imperial City market: Gin-Wulm, Simplicia the
+Slow, a Watch guard, Dynari Amnis; NPCs with other voices opened menus). The
+test now becomes a constant, `GetRandomPercent >= 0` when it passes and `< 0`
+when it fails. It keeps its OR flag, so a false member of an OR group only
+drops out of the group. `GetIsClass` still drops, because the player's class
+is not the source's. Oblivion.esm: of the GREETING and HELLO lines with a
+target identity test, 628 test "is the player" and stay as they were. 70 HELLO
+lines name another NPC and 31 test "not the player"; these can no longer reach
+the player. Three `GetIsClass` lines are unchanged. Tests:
+`tests/test_dialog.py::TestCTDAConversion::test_player_target_identity_is_settled`.
