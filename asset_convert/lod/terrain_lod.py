@@ -4,7 +4,7 @@ Reads LAND records (VHGT heights, VCLR vertex colors, ATXT/VTXT texture layers)
 from the converted ESM and produces:
   meshes/terrain/<WRLD>/<WRLD>.<level>.<tx>.<ty>.btr   — heightmap NIF per tile
   textures/terrain/<WRLD>/<WRLD>.<level>.<tx>.<ty>.dds  — per-tile diffuse (DXT1)
-  textures/terrain/<WRLD>/<WRLD>.<level>.<tx>.<ty>_n.dds — per-tile normal (flat)
+  textures/terrain/<WRLD>/<WRLD>.<level>.<tx>.<ty>_n.dds — per-tile normal (DXT1)
 
 LOD levels generated: 4, 8, 16 (cells per tile side).
 Each tile covers level×level cells.
@@ -115,9 +115,7 @@ LOD_LEVELS  = [4, 8, 16, 32]
 # it's seen and cuts the total ~8x.
 TEX_SIZE_BY_LEVEL = {4: 256, 8: 512, 16: 1024, 32: 2048}
 
-# Normal maps carry far less perceptible detail than diffuse at LOD distance,
-# so bake them at half the diffuse resolution (BC5 is 2x DXT1 per texel, so this
-# is the single biggest size win).
+#: A normal tile's side is the diffuse side over this; it shows far less detail than diffuse at LOD distance.
 NORMAL_SIZE_DIVISOR = 2
 
 # ---------------------------------------------------------------------------
@@ -868,11 +866,12 @@ def _composite_tile_diffuse(lands, tile_x, tile_y, level, ltex_map, tex_root,
 
 
 def _heightmap_normal_rgb(heights: np.ndarray, out_px: int) -> np.ndarray:
-    """Derive a tangent-space normal map (RGB uint8) from a height grid.
+    """Derive a model-space terrain-LOD normal map (RGB uint8) from a height grid.
 
-    Skyrim terrain-LOD normal maps encode the surface normal so distant terrain
-    is lit; a flat normal leaves the LOD looking unlit.  heights is in game
-    units; we resize to out_px and take the gradient.
+    Vanilla's layout: R = east, G = up, B = north, each stored as
+    n * 0.5 + 0.5, image row 0 = north.  heights is in game units with row 0
+    = south; we resize to out_px and take the gradient.
+    See: docs/commentary/asset_convert_terrain.md#terrain-lod-normal-layout
     """
     from PIL import Image
     # heights row 0 = SOUTH (LAND convention); the diffuse tile is written with
@@ -890,7 +889,7 @@ def _heightmap_normal_rgb(heights: np.ndarray, out_px: int) -> np.ndarray:
     nx, ny, nzz = -gx, -gy, nz
     norm = np.sqrt(nx*nx + ny*ny + nzz*nzz) + 1e-6
     nx, ny, nzz = nx/norm, ny/norm, nzz/norm
-    rgb = np.stack([(nx*0.5+0.5), (ny*0.5+0.5), (nzz*0.5+0.5)], axis=-1)
+    rgb = np.stack([(nx*0.5+0.5), (nzz*0.5+0.5), (ny*0.5+0.5)], axis=-1)
     return np.clip(rgb*255, 0, 255).astype(np.uint8)
 
 
@@ -1143,7 +1142,6 @@ def _process_tile(args):
         write_dds_dxt1(atlas, _worker_tex_dir / f'{tag}.dds', size=tex_size)
 
         # Normal map: derive from the tile heightmap so distant terrain is lit.
-        # Baked at half the diffuse resolution (BC5 is 2x DXT1/texel).
         normal_size = max(64, tex_size // NORMAL_SIZE_DIVISOR)
         normal_rgb = _heightmap_normal_rgb(heights, normal_size)
         write_normal_dds(normal_rgb, _worker_tex_dir / f'{tag}_n.dds')

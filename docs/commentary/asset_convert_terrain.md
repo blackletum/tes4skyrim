@@ -201,7 +201,7 @@ confirms SW is REAL, not centered, and that `maxLOD` is not always 32. Guarded b
 ### Distant LOD generation (one-click, rebuilt 2026-07-06) — `convert.py` Phase 8 `phase_lod`
 Two pieces, both native, both re-enabled in the pipeline (`generate_lod` + `generate_terrain_lod`).
 
-**Terrain LOD** (`asset_convert/lod/terrain_lod.py` + `terrain_lod_textures.py`): per-tile `.btr` heightmap NIF + composited diffuse `.dds` + heightmap-derived BC5 normal `.dds`, LOD levels 4/8/16/32. TES4Tamriel = 1301 tiles.
+**Terrain LOD** (`asset_convert/lod/terrain_lod.py` + `terrain_lod_textures.py`): per-tile `.btr` heightmap NIF + composited diffuse `.dds` + heightmap-derived DXT1 normal `.dds`, LOD levels 4/8/16/32. TES4Tamriel = 1301 tiles.
 - **The old diffuse was the bug**: it upscaled raw LAND VCLR vertex colors → a blurry color grid (why distant terrain looked wrong). FIX: `terrain_lod_textures.composite_cell()` composites the REAL landscape textures — resolve LTEX FormID→diffuse via `build_ltex_texture_map` (LAND BTXT/ATXT → LTEX.TNAM → TXST.TX00 = `tes4\landscape\*.dds`), then per quadrant blend base + alpha layers using the ATXT/VTXT opacity grid (17×17, pos=row*17+col, sorted by ATXT layer index), ×VCLR shading at 0.4 strength (full x2 caused hard cell seams). Landscape UV repeats every 2 cells.
 - **Compositor orientation contract (fixed 2026-07-09 — the "large single color areas" bug was three separate defects):**
   1. **Quadrants with no BTXT base layer** (22.6% of Tamriel quadrants, whole sea floor) rendered flat grey-128. The engine's default for unpainted land is `Landscape\Default.dds` → `DEFAULT_LAND_TEXTURE = tes4\landscape\default.dds`. Cells with NO LAND record now also composite (default texture) instead of a flat fill.
@@ -212,7 +212,7 @@ Two pieces, both native, both re-enabled in the pipeline (`generate_lod` + `gene
 - **Land UVs are REQUIRED and meaningful** (fixed 2026-07-09): vanilla maps the tile texture across the tile with `u = x/4096`, `v = 1 − y/4096` (v=0 = NORTH edge = DDS row 0). "UVs are irrelevant for terrain .btr" was only true of how xLODGen *reads* them — the ENGINE samples them. All-zero UVs make every triangle sample one texel → each tile renders as a single flat color → the in-game/world-map "hard-edged checkerboard, one color per tile" symptom. Water shape has NO UVs (num_uv_sets=0), matching vanilla.
 - **LOD water (added 2026-07-09, vanilla-exact)**: child[1] = `BSMultiBoundNode` named `WATER` (scale 1) → one shape with an independent flat quad per water cell (4 verts/2 tris each, cell-local size 4096/level, Z = water height / level, NO shader/UV/normals — the engine textures it from WRLD NAM3). LOD4 uses `BSSegmentedTriShape` with EXACTLY 16 segments (fixed 4×4 grid, column-major sx*4+sy, so the engine can hide quads over loaded cells); LOD8/16/32 use plain `NiTriShape`. Segment binary layout (nif.xml `BSGeometrySegmentData`): `flags:byte=0, start_index:uint (tri-POINTS, 0 when segment empty), num_primitives:uint`; PyFFI's `BSSegment` fields are misaligned over the same 9 bytes — write `internal_index = start<<8` and `flags.bsseg_water = 1` (== num_prims 2 << 8). WATER AABB: XY = quad bbox in world units rel. tile origin; Z spans [min water height, max(max height, 0)]. Water cells = CELL HasWater (DATA bit 0x02) AND terrain dips below the cell water height (XCLW override valid only in ±1e9, else WRLD DNAM default).
   - **The old CTD** (BSMultiBoundNode "Water" → null deref): the engine's LOD-water path derefs the worldspace's WATR via **WRLD NAM3** — the fix is NOT to avoid the node, it's to write NAM2/NAM3 = Skyrim.esm DefaultWater (0x18) + NAM4 (LOD water height, 0 for Oblivion) in `convert_WRLD`. Also: TES4 CELL XCLW `-2147483648.0` = "use default" sentinel — must be OMITTED on conversion, not written as a literal height.
-- Normal map derived from the heightmap gradient (`_heightmap_normal_rgb` + real BC5 via `_encode_bc4_block`), replacing the old flat normal so distant terrain is lit.
+- Normal map derived from the heightmap gradient (`_heightmap_normal_rgb`, written as full-RGB DXT1 by `write_normal_dds`), replacing the old flat normal so distant terrain is lit. Layout and evidence: [Terrain-LOD normal tiles](#terrain-lod-normal-layout).
 - Debug single tiles without a full run: `python tools/lod/terrain_lod_render.py` (rebuilds specific tiles in-process, reports water quads, dumps diffuse PNG). `python -m tools.lod.terrain_lod_tex_probe [--cell X Y]` audits LTEX→TXST→dds resolution and per-cell layers.
 - Validate with `python tools/lod/terrain_lod_render.py --esm output/oblivion.esm/oblivion.esm --worldspace TES4Tamriel --cell X Y --radius R` → side-by-side hillshade + composited diffuse (the primary iteration tool; do NOT byte-match vanilla .btr). `tools/lod/lod_nif_inspect.py` dumps .btr/.bto geometry+shader.
 - **🔴 A worldspace a MASTER defines is ALWAYS sourced from that master, with the plugin as an OVERLAY — never from the plugin alone, however much terrain it adds** (2026-08-11, Tamriel.esp). `convert.py::_records_esm` used to hand record ownership to whichever file held the *bulk* of the LAND records. That silently inverts for a plugin which **extends** a master's worldspace rather than patching it: Tamriel.esp adds a landmass around Cyrodiil (99,910 LAND vs Oblivion.esm's 31,823), won ownership, and every tile was then built from the plugin ALONE — all of the master's own terrain was missing from the heightmap and `fill_missing` edge-extended it into flat plateaus. Symptom: tile-sized discontinuities along the vanilla border, **worst at level 32** where one tile spans 32×32 cells (tile `32.0.-32` had 86 of 1024 cells and encoded world Z `4096..16416` instead of `-4576..20152`; tile `32.0.0` had ZERO cells and rendered dead flat). The tell is that the only level-32 tiles that looked *correct* were the two the plugin never regenerated, so the master's copy survived. Record COUNT never distinguished "patches a worldspace" from "extends a worldspace" and must not decide ownership — the overlay path already expresses "master's terrain + this plugin's edits" correctly and is what the DLC/override case always used. Verify with `Parsing LAND records from <master>, <plugin>` in the run log and a LAND count ABOVE the plugin's own (110,095 vs 99,910 here); a single-file parse line means the bug is back.
@@ -1315,6 +1315,51 @@ keeps all 3,842 instances for ~90 MB -- using `is_architecture`, a PATH SEGMENT
 test for Bethesda's own top-level `Architecture` mesh folder (the record type
 cannot help: 4,253 of the LOD-flagged bases are STAT, 119 TREE, 10 MSTT).
 Not shipped pending an in-game look at the authored rule alone.
+
+## <a id="terrain-lod-normal-layout"></a>Terrain-LOD normal tiles are model-space: R = east, G = up, B = north
+
+**Code:** `_heightmap_normal_rgb` in `asset_convert/lod/terrain_lod.py`,
+`write_normal_dds` in `asset_convert/texture/dds_codec.py`.
+
+The terrain `.btr` we write has no vertex normals and sets
+`Model_Space_Normals`, so the surface direction comes from its `_n.dds` alone.
+Vanilla's tile stores all three axes of a model-space normal, each as
+`n * 0.5 + 0.5`: **R = east, G = up, B = north**, image row 0 = north like the
+diffuse tile.
+
+Measured on 10 vanilla `tamriel.<level>.<x>.<y>` tiles read from the SSE BSAs
+with `read_bsa_files` (`4.0.0`, `4.-4.0`, `4.8.-12`, `4.-20.4`, `4.12.8`,
+`4.24.-8`, `8.0.0`, `8.8.8`, `16.0.0`, `32.0.0`):
+
+- **Format.** All 10 `_n.dds` are DXT5, 256×256, 8 mips, alpha 255 on every
+  texel. Read as a three-channel vector the texels are unit length (tile mean
+  0.979–1.000). G never drops below 125; R and B span 0–255.
+- **Shader.** All 10 `.btr` use shader type 18 with flags1 `0x80401000`, which
+  has `Model_Space_Normals` (bit 12) set — the flag `terrain_nif.py` writes.
+- **Axes.** Normals were rebuilt from Skyrim.esm's own LAND heights
+  (`parse_land_records` + `_assemble_tile`) by plain finite differences —
+  column = east, row = north, rows then flipped so row 0 = north — and resized
+  to the tile's 256 px. R follows east at r = 0.873–0.977, G follows up at
+  0.845–0.980, B follows north at 0.890–0.976. Of the 96 ways to read a tile
+  (6 channel orders × 4 sign choices for the two horizontal axes × 4 image
+  mirrorings) this one has the lowest mean absolute error on 10 of 10 tiles:
+  2.94–11.40, against 11.57–29.28 for the runner-up.
+
+The converter used to write north in G and up in B, then encode BC5, which
+stores only R and G. Baked from the same Skyrim.esm heights, those tiles decode
+with blue = 0 on every texel. Read in the layout above that is a normal lying
+on its side and pointing south (north = −1.00 on all 10 tiles), with "up" taken
+from the north slope: above zero on only 44–76% of texels, with a tile mean
+between −0.08 and +0.27. Tiles written now have up above zero on 100% of
+texels (tile mean 0.62–0.97) and correlate with vanilla's, channel for channel,
+at R 0.861–0.952, G 0.782–0.897, B 0.879–0.956 — at the sizes the converter
+ships, each pair compared at the smaller of the two sizes.
+
+The tile is written as DXT1 with mips: vanilla's alpha is constant, and DXT1 is
+the same color block without the alpha block. All of this is measured on
+files; the shader was not read and no in-game comparison is recorded here.
+Tiles baked earlier keep the old layout until terrain LOD is rebuilt
+(`tools/release/create_lod.py --worldspaces <EDID>`).
 
 ## The DDS block codec
 <a id="dds-block-codec"></a>

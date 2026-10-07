@@ -15,10 +15,15 @@ import struct
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from asset_convert.texture.dds_codec import (c565_to_rgb, encode_bc4_channel,
-                                         encode_dxt1_quality, rgb_to_565)
-from asset_convert.lod.terrain_lod import fill_missing
+                                         encode_dxt1_quality, rgb_to_565,
+                                         write_normal_dds)
+from asset_convert.lod.terrain_lod import _heightmap_normal_rgb, fill_missing
+
+#: Game units between neighbouring LAND vertices: a 4096-unit cell has 32 intervals.
+VERTEX_STEP = 4096 / 32
 
 
 def _dxt1_reference(img: np.ndarray) -> bytes:
@@ -205,3 +210,70 @@ class TestFillMissing:
         c[:, :, 0] = np.arange(8, dtype=np.uint8)[None, :]
         fill_missing(h, c)
         assert (h[:, 3] == 2.0).all()          # column 2, not 4
+
+
+def _texel(rise_east, rise_north):
+    """Vanilla's texel for ground with these slopes: R east, G up, B north."""
+    normal = np.array([-rise_east, 1.0, -rise_north])
+    return (normal / np.linalg.norm(normal) * 0.5 + 0.5) * 255
+
+
+class TestTerrainLodNormalLayout:
+    """Terrain-LOD normal tiles are R = east, G = up, B = north, row 0 = north.
+
+    Every expected texel comes from the slope, not from the code: ground
+    z = a*east + b*north has the upward normal (-a, -b, 1), so it leans back
+    down the slope and a RISE shows as a channel BELOW 128.  LAND row 0 is
+    south and column 0 west; each ramp below climbs one vertex step per
+    vertex, 45 degrees.
+    See: docs/commentary/asset_convert_terrain.md#terrain-lod-normal-layout
+    """
+
+    def _rgb(self, heights):
+        return _heightmap_normal_rgb(heights.astype(np.float32), 64).astype(int)
+
+    def _two_ramps(self):
+        """Flat SW quarter; the east half rises east, the north half rises north."""
+        ramp = np.maximum(np.arange(33) - 16, 0) * VERTEX_STEP
+        return ramp[None, :] + ramp[:, None]
+
+    def _assert_quarters(self, rgb, tolerance):
+        """Each quarter of the two-ramp tile holds the texel its own slopes give.
+
+        The north-rising quarters must be the TOP two and the east-rising
+        quarters the RIGHT two; the windows stay clear of the seams.
+        """
+        top = left = slice(8, 24)
+        bottom = right = slice(40, 56)
+        for name, rows, cols, rise in (('SW', bottom, left, (0, 0)),
+                                       ('SE', bottom, right, (1, 0)),
+                                       ('NW', top, left, (0, 1)),
+                                       ('NE', top, right, (1, 1))):
+            off = np.abs(rgb[rows, cols] - _texel(*rise)).max()
+            assert off <= tolerance, f'{name} quarter is {off:.0f} off'
+
+    def test_flat_ground_points_up_in_green(self):
+        """Level ground is straight up everywhere: green full, red and blue mid."""
+        rgb = self._rgb(np.zeros((33, 33)))
+        assert np.abs(rgb - _texel(0, 0)).max() <= 1
+
+    def test_ground_rising_east_tilts_red_down(self):
+        """A rise to the east pulls red below the midpoint and leaves blue on it."""
+        east = np.tile(np.arange(33) * VERTEX_STEP, (33, 1))
+        assert np.abs(self._rgb(east)[8:-8, 8:-8] - _texel(1, 0)).max() <= 4
+
+    def test_ground_rising_north_tilts_blue_down(self):
+        """A rise to the north pulls blue below the midpoint and leaves red on it."""
+        north = np.tile((np.arange(33) * VERTEX_STEP)[:, None], (1, 33))
+        assert np.abs(self._rgb(north)[8:-8, 8:-8] - _texel(0, 1)).max() <= 4
+
+    def test_north_is_the_top_row_and_east_the_right_column(self):
+        """Each slope lands in its own quarter of the image, not a mirrored one."""
+        self._assert_quarters(self._rgb(self._two_ramps()), 4)
+
+    def test_the_written_tile_keeps_all_three_channels(self, tmp_path):
+        """The file on disk decodes to the same three axes, to one 5-bit step."""
+        out = tmp_path / 'n.dds'
+        write_normal_dds(self._rgb(self._two_ramps()).astype(np.uint8), out)
+        decoded = np.asarray(Image.open(out).convert('RGB')).astype(int)
+        self._assert_quarters(decoded, 8)
