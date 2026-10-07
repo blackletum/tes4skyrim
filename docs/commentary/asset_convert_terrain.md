@@ -1640,6 +1640,27 @@ At level 32 HALF the baked footprint is invented. The coarser the level the
 further a tile reaches past the landmass, because the footprint grows as
 `level^2` while the real cells do not.
 
+**The queue's cell range is inclusive.** `_queue_tiles` used to end a level at
+`((max + level - 1) // level) * level`, which is the tile that HOLDS the last
+cell only when that cell is not on a tile boundary: a max cell that is an exact
+multiple of the level lost its tile row or column, and a max cell of 0 lost it
+at every level (one LAND cell at (0, 0) queued nothing). It now ends at
+`(max // level + 1) * level`. Measured on a converted Oblivion.esm by queueing
+each worldspace both ways, every earlier tile still queued:
+
+| worldspaces | LAND cells | tiles before | tiles after |
+|---|---|---|---|
+| the 18 a default `create_lod.py` run bakes | 25,976 | 2,507 | 2,530 |
+| all 51 root worldspaces that own LAND | 29,837 | 3,274 | 3,302 |
+
+The new tiles are all level 4: MS13CheydinhalOblivionWorld 11, DABoethiaRealm
+7, OblivionRD006 3 and MS14World 2 in a default run, plus Toddland 3 and
+TestGnarlWorld 2, which are baked only when named. All 28 lie inside the
+worldspace's `.lod` grid. Tamriel's LAND runs -64..69 by -69..59, neither
+maximum on a tile boundary, so it gains nothing. Baking DABoethiaRealm,
+MS14World and OblivionRD006 before and after leaves the 321 earlier files
+byte-identical and adds 36 (12 tiles). Not checked in game.
+
 Worked example — TES4 cell (30,-60), which no plugin owns. TR's TES3 source
 stops at TES3 x=14, and a TES3 cell splits into four TES4 cells, so TES4 x=30
 would need TES3 x=15. No LOD4 tile exists at (28,-60), but the level 8/16/32
