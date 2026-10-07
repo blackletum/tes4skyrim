@@ -193,11 +193,41 @@ class TestCTDAConversion:
 
     def test_identity_is_never_retargeted_onto_a_reference(self):
         """GetIsID must never land on RunOn=Reference (the 667-GREETING
-        regression).  In a 'ref'-disposition Say topic the listener is known
-        and the authored identity is statically satisfied, so the condition
-        is DROPPED — the one thing it must never become is a Reference pin."""
+        regression).  Aimed at the player, it is settled to a constant."""
         raw = _tes4_ctda(type_byte=0x02, func=72, p1=0x00023F2E)
-        assert convert_ctda(raw, offset=1, run_on_target_ref=0x14) is None
+        out = convert_ctda(raw, offset=1, run_on_target_ref=0x14)
+        assert struct.unpack_from('<H', out, 8)[0] == 77
+        assert struct.unpack_from('<II', out, 20) == (0, 0)
+
+    @pytest.mark.parametrize('type_byte, comp, p1, passes', [
+        (0x02, 1.0, 0x00033907, False),   # target is Martin: Oblivion 000ADC6C
+        (0x02, 1.0, 0x00000007, True),    # target is the player
+        (0x02, 0.0, 0x00000007, False),   # target is not the player
+        (0x02, 0.0, 0x00033907, True),    # target is not Martin
+        (0x22, 1.0, 0x00033907, True),    # target != Martin
+    ])
+    def test_player_target_identity_is_settled(self, type_byte, comp, p1, passes):
+        """A greeting aimed at the player answers a target GetIsID at conversion.
+
+        Dropping "target is Martin" let Oblivion's Goodbye blocking line greet
+        the player from every NPC with its voices, so no menu opened.
+        """
+        raw = _tes4_ctda(type_byte=type_byte, comp=struct.unpack('<I', struct.pack('<f', comp))[0],
+                         func=72, p1=p1)
+        out = convert_ctda(raw, offset=1, run_on_target_ref=0x14)
+        op, value, func = out[0] & 0xE0, struct.unpack_from('<f', out, 4)[0], struct.unpack_from('<H', out, 8)[0]
+        assert (func, value) == (77, 0.0)
+        assert op == (0x60 if passes else 0x80)
+
+    def test_settled_identity_keeps_its_or_flag(self):
+        """A settled test stays in its OR group, so a false member only drops out."""
+        raw = _tes4_ctda(type_byte=0x03, func=72, p1=0x00033907)
+        assert convert_ctda(raw, offset=1, run_on_target_ref=0x14)[0] & 0x01
+
+    def test_say_drop_still_drops_a_player_identity(self):
+        """A bare Say has no target: the identity test drops, as before."""
+        raw = _tes4_ctda(type_byte=0x02, func=72, p1=0x00033907)
+        assert convert_ctda(raw, offset=1, run_on_target_ref=0x14, drop_run_on_target=True) is None
 
     def test_use_global_flag_remaps_compvalue(self):
         """Only type bit 0x04 (Use Global) makes CompValue a FormID."""

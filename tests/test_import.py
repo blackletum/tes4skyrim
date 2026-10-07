@@ -3656,8 +3656,10 @@ class TestSayTopicRetarget:
         from tes5_import.base.conditions import convert_ctda
         for func in (72, 68):
             raw = self._raw_ctda(func=func)
-            # Never retargeted to the reference, under either disposition...
-            assert convert_ctda(raw, offset=1, run_on_target_ref=0x14) is None, \
+            # Never retargeted to the reference, under either disposition
+            # (GetIsID aimed at the player is settled to a constant instead)...
+            out = convert_ctda(raw, offset=1, run_on_target_ref=0x14)
+            assert out is None or struct.unpack_from('<II', out, 20) == (0, 0), \
                 f'identity func {func} must not survive as RunOn=Reference'
             assert convert_ctda(raw, offset=1, drop_run_on_target=True) is None, \
                 f'identity func {func} must be dropped under Say()'
