@@ -111,12 +111,13 @@ world rotation (twist), then `UpperArm` turns toward the elbow spot and
 `ForeArm` toward the claw spot. `STANCE` sets where the joints sit at rest:
 Oblivion's idle offset plus `(1 - blend) x` the difference to the Skyblivion
 rest offset, with Oblivion's movement away from its idle added on top.
-Measured at blend 0.65 (left arm, out/forward/up): idle upper arm
-(.82, .00, -.57), about 35° down, forearm (.29, .94, -.16) pointing forward;
-Oblivion (.51, -.11, -.85) and (-.16, .97, .16), Skyblivion bind
-(.98, .18, .10) and (.73, .52, -.45). Claw gap / Oblivion hand gap: idle
-89 / 58, side swipes 16.2 / -2.0 and -2.0 / 6.4, power attack 88 / 60.
-Lower the blend for a wider stance, raise it toward Oblivion's tucked arms.
+Each joint has its own blend. Measured at 0.65 (elbow) and 0.75 (claw), left
+arm (out, forward, up): idle upper arm (.82, .00, -.57), about 35° down,
+forearm (.15, .96, -.23) pointing forward, slightly out; Oblivion
+(.51, -.11, -.85) and (-.16, .97, .16), Skyblivion bind (.98, .18, .10) and
+(.73, .52, -.45). Claw gap / Oblivion hand gap: idle 77 / 58, side swipes
+15.1 / -2.0 and -3.6 / 6.4, power attack 75 / 60. Lower a blend for a wider
+stance, raise it toward Oblivion's tucked arms.
 
 ## <a id="the-package"></a>The package
 

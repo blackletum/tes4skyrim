@@ -2368,6 +2368,19 @@ animation-driven actor cannot turn by itself while the AI faces its target
 before releasing — falmerbehavior keeps `bAllowRotation` on for ranged
 (hand type 7), as does our own attack modifier. *Unconfirmed.*
 
+<a id="attack-pin"></a>
+**Melee attacks are pinned the same way (2026-10-08, pending in-game
+confirmation).** `IsAttacking` stops the combat controller's steering but
+not the velocity the actor already has: the Skyblivion land dreugh "slides a
+bit after or before an attack and then starts moving". The chaurus wraps its
+bites in `bAnimationDriven_IsActive` (above), so
+`BSIsActiveModifier_IsAttacking` now also binds `bIsActive3 →
+bAnimationDriven`. Oblivion instead walks while swiping: the land dreugh's
+side swipes key legs, pelvis and root at priority 25, below the walk's 30,
+and the upper body at 55 (its forward power attack keys everything at 55).
+Layering such swipes over locomotion with bone weights is the faithful
+alternative if pinned attacks look wrong.
+
 <a id="strafe-direction-blend"></a>
 **Strafing is a `Direction` blend, never an event-entered state
 (2026-08-26).** After `5e868c8` the scamp "slides while strafing instead of

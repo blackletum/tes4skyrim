@@ -24,25 +24,26 @@ class ReachRig:
 
     def __init__(self, src: Skeleton, dst: Skeleton, chains, frame_bone: str,
                  stance=None):
-        """`frame_bone` carries the offsets; `stance` is (source idle worlds, blend).
+        """`frame_bone` carries the offsets; `stance` is (source idle worlds, blends).
 
         With a stance, a joint's offset is the source's scaled movement away
         from its idle, added to a blend of the target's rest offset (0) and
-        the source idle's scaled offset (1).
+        the source idle's scaled offset (1); `blends` has one per joint after
+        the chain root.
         """
         self.src, self.dst = src, dst
         self.ref = src.index[frame_bone]
         self.chains = [[dst.index[n] for n in names] for names in chains]
         self.scale, self.bias = {}, {}
         for idx in self.chains:
-            for j in idx[1:]:
+            for n, j in enumerate(idx[1:]):
                 rest = _offset(dst.world, idx[0], j, self.ref)
                 k = float(np.linalg.norm(rest)
                           / np.linalg.norm(_offset(src.world, idx[0], j, self.ref)))
                 self.scale[j], self.bias[j] = k, np.zeros(3)
                 if stance is not None:
                     idle = _offset(stance[0], idx[0], j, self.ref) * k
-                    self.bias[j] = (1.0 - stance[1]) * (rest - idle)
+                    self.bias[j] = (1.0 - stance[1][n]) * (rest - idle)
 
     def target(self, root: int, joint: int, src_world, dst_world) -> np.ndarray:
         """World spot this frame's `joint` should reach."""

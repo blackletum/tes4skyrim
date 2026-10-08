@@ -124,12 +124,14 @@ def attack_modifier_list(gb):
 
     While the state is active it drives IsAttacking=1 (the combat
     controller's in-progress flag), bAllowRotation=1 (target tracking during
-    the swing) and bDisableHeadTrack=1.  Without IsAttacking the engine
-    keeps steering mid-swing.
+    the swing), bDisableHeadTrack=1 and bAnimationDriven=1 (motion from the
+    clip, not the commanded velocity).
+    See: docs/commentary/asset_convert_creature.md#attack-pin
     """
     bind = gb.binding_set([('bIsActive0', 'IsAttacking'),
                            ('bIsActive1', 'bAllowRotation'),
-                           ('bIsActive2', 'bDisableHeadTrack')])
+                           ('bIsActive2', 'bDisableHeadTrack'),
+                           ('bIsActive3', 'bAnimationDriven')])
     iso = gb.add('BSIsActiveModifier')
     iso.param('variableBindingSet', bind.ref)
     iso.param('userData', 2)
