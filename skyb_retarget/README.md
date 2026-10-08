@@ -26,6 +26,22 @@ python -m skyb_retarget.build --skyb SKYBSkinLandDreugh.nif \
 `<work>/report.json` records the ground lift, every capsule stretch, the
 ragdoll bodies dropped and the tracks replaced per clip.
 
+## <a id="verification"></a>Verification (Land Dreugh, 2026-10-08)
+
+- `ragdoll_validate` on the fitted Oblivion skeleton: the same 16 sub-unit
+  pivot mismatches the ORIGINAL has (authored), nothing new; 0 violations on
+  the converted skeleton. 10 bodies dropped (wings, hands); 25 kept.
+- Body NIF skinned at rest reproduces the Skyblivion mesh to 0.0002 units
+  (+6.59 lift); its 64 bone nodes equal the converted skeleton's exactly.
+- `animcache_validate` OK; `animdata_index_check`: 31 clips, 0 problems.
+- Feet (tip height range / mean slide per frame while planted), Oblivion vs
+  retargeted, all within ~1 unit in height and lower slide in every clip
+  checked (idle, walk, run, back, strafe, turn, attacks, recoil, stagger),
+  e.g. walk 0.50-1.01 -> 0.28-0.57, run 1.51-3.64 -> 0.73-1.76.
+- Walk speed stays Oblivion's (155 u/s from the Speed attribute): the
+  converter's speed bake (`hkx_anim.speed_bake_factor`) plays the shorter
+  strides faster.
+
 ## <a id="the-test-plugin"></a>The test plugin
 
 `tes4_plugin.py` writes `SKYBLandDreugh.esp`, a masterless TES4 plugin with one
