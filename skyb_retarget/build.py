@@ -28,10 +28,12 @@ from output_layout import (DEFAULT_EXPORT, DEFAULT_OUTPUT, REPO_ROOT,
                            asset_root, plugin_out_root, tree_members,
                            write_mod_zip)
 from skyb_retarget import dreugh_map
-from skyb_retarget.anim import rewrite_kf
+from skyb_retarget.anim import pose_deltas, rewrite_kf
 from skyb_retarget.body import write_body
+from skyb_retarget.esp_prune import prune
 from skyb_retarget.fit import (fitted_worlds, ground_lift, landmark_positions,
                                write_fitted_skeleton)
+from skyb_retarget.horns import fit_horn, joints
 from skyb_retarget.skin_data import read_skin
 from skyb_retarget.tes4_plugin import LAND_DREUGH, write_plugin
 
@@ -43,23 +45,32 @@ STAGES = ('--export-only', '--creatures-only', '--import-only')
 
 
 def fit_rig(skyb: str, creature_dir: str) -> dict:
-    """Landmarks, lift and fitted skeleton for the Skyblivion mesh."""
+    """Landmarks, lift, horns, fitted skeleton and reference-pose deltas."""
     mesh = read_skin(skyb)
     lift = ground_lift(mesh, dreugh_map.LANDMARKS)
     mesh.verts[:, 2] += lift
+    horn_list = [fit_horn(mesh, sign, dreugh_map.HORN_SOURCE,
+                          dreugh_map.HORN_SELECT, dreugh_map.horn_knots(side))
+                 for sign, side in dreugh_map.HORNS]
+    positions = landmark_positions(mesh, dreugh_map.LANDMARKS)
+    for horn in horn_list:
+        positions.update(joints(horn, mesh))
     src = Skeleton.from_nif(os.path.join(creature_dir, 'skeleton.nif'))
-    new = fitted_worlds(src, landmark_positions(mesh, dreugh_map.LANDMARKS),
-                        dreugh_map.SWING)
+    new = fitted_worlds(src, positions, dreugh_map.SWING)
     local = np.array([new[i] if p < 0 else new[i] @ np.linalg.inv(new[p])
                       for i, p in enumerate(src.parents)])
-    return {'lift': lift, 'src': src, 'new_world': new,
-            'dst': Skeleton(src.names, src.parents, local)}
+    clip, bones = dreugh_map.REF_POSE
+    return {'lift': lift, 'src': src, 'new_world': new, 'horns': horn_list,
+            'dst': Skeleton(src.names, src.parents, local),
+            'deltas': pose_deltas(os.path.join(creature_dir, clip + '.kf'), src, bones),
+            'mapping': (dreugh_map.SKIN_MAP, dreugh_map.SPLIT_BODY, horn_list)}
 
 
-def _weighted_bones() -> set:
+def _weighted_bones(rig: dict) -> set:
     """Oblivion bones the Skyblivion weights land on."""
     split = dreugh_map.SPLIT_BODY
-    return set(dreugh_map.SKIN_MAP.values()) | {split[1], split[2]}
+    horn_bones = {b for h in rig['horns'] for b, _f in h.knots}
+    return set(dreugh_map.SKIN_MAP.values()) | {split[1], split[2]} | horn_bones
 
 
 def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
@@ -69,7 +80,7 @@ def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
     report = write_fitted_skeleton(
         os.path.join(creature_dir, 'skeleton.nif'),
         os.path.join(out_dir, 'skeleton.nif'), rig['new_world'],
-        dreugh_map.SWING, _weighted_bones())
+        dreugh_map.SWING, _weighted_bones(rig))
     report['clips'] = {}
     for dirpath, _dirs, files in os.walk(creature_dir):
         for fn in sorted(f for f in files if f.lower().endswith('.kf')):
@@ -77,7 +88,7 @@ def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
             rel = os.path.relpath(src_kf, creature_dir)
             report['clips'][rel] = rewrite_kf(
                 src_kf, os.path.join(out_dir, rel), rig['src'], rig['dst'],
-                dreugh_map.LEGS)
+                dreugh_map.LEGS, rig['deltas'])
             print(f'  retargeted {rel}: {report["clips"][rel]} tracks', flush=True)
     return report
 
@@ -98,7 +109,7 @@ def run_converter(mod_dir: str, plugin: str) -> None:
         subprocess.run(cmd, check=True, env=env, cwd=str(REPO_ROOT), **POPEN_FLAGS)
 
 
-def install_body(plugin: str, skyb: str, lift: float) -> str:
+def install_body(plugin: str, skyb: str, rig: dict) -> str:
     """Write the Skyblivion body over every body NIF the project manifest lists."""
     out = plugin_out_root(DEFAULT_OUTPUT, plugin, DEFAULT_EXPORT)
     for dirpath, _dirs, files in os.walk(out / 'meshes'):
@@ -108,19 +119,31 @@ def install_body(plugin: str, skyb: str, lift: float) -> str:
             manifest = json.load(f)
         skeleton = os.path.join(dirpath, 'character assets', 'skeleton.nif')
         for body in manifest['bodies']:
-            write_body(skyb, skeleton, os.path.join(dirpath, body), lift,
-                       dreugh_map.SKIN_MAP, dreugh_map.SPLIT_BODY)
+            write_body(skyb, skeleton, os.path.join(dirpath, body), rig['lift'],
+                       rig['mapping'])
             print(f'  body: {os.path.join(dirpath, body)}')
     return str(out)
 
 
-def package(plugin_out: str, zip_path: str) -> int:
-    """Zip the converted plugin tree plus CreatureRuntime.dll; returns file count."""
+def _shipped(name: str) -> bool:
+    """True for what the creature needs in game: meshes and its animation fragment."""
+    name = name.replace('\\', '/')
+    return (name.startswith(('meshes/', 'SKSE/Plugins/CreatureRuntime/'))
+            and not name.endswith('project_manifest.json'))
+
+
+def package(plugin_out: str, plugin: str, zip_path: str) -> tuple:
+    """Zip the pruned plugin, meshes, animation fragment and CreatureRuntime.dll.
+
+    Returns (file count, the pruned plugin's record counts).
+    """
+    with open(os.path.join(plugin_out, plugin), 'rb') as f:
+        esp, counts = prune(f.read())
     members = [(name, path) for name, path in tree_members(plugin_out)
-               if not name.endswith('.manifest.json')]
-    members.append(('SKSE/Plugins/CreatureRuntime.dll', CREATURE_DLL))
+               if _shipped(name)]
+    members += [(plugin, esp), ('SKSE/Plugins/CreatureRuntime.dll', CREATURE_DLL)]
     os.makedirs(os.path.dirname(os.path.abspath(zip_path)), exist_ok=True)
-    return write_mod_zip(zip_path, members)
+    return write_mod_zip(zip_path, members), counts
 
 
 def main(argv=None) -> int:
@@ -139,9 +162,9 @@ def main(argv=None) -> int:
         mod_dir, 'Meshes', 'Creatures', folder), rig)
     write_plugin(os.path.join(mod_dir, plugin))
     run_converter(mod_dir, plugin)
-    out = install_body(plugin, args.skyb, rig['lift'])
+    out = install_body(plugin, args.skyb, rig)
     zip_path = args.zip or os.path.join(args.work, LAND_DREUGH['edid'] + '.zip')
-    count = package(out, zip_path)
+    count, report['records'] = package(out, plugin, zip_path)
     report['lift'] = rig['lift']
     with open(os.path.join(args.work, 'report.json'), 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)

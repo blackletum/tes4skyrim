@@ -13,7 +13,8 @@ from dataclasses import replace
 
 import numpy as np
 
-from asset_convert.havok.clip_retarget import Skeleton, retarget_clip
+from asset_convert.havok.clip_retarget import (Skeleton, retarget_clip,
+                                               world_positions)
 from asset_convert.havok.kf_decode import (BoneTrack, controlled_block_target,
                                            decode_kf)
 from asset_convert.havok.kf_writer import transform_interpolator
@@ -50,17 +51,35 @@ def _one_hemisphere(q: np.ndarray) -> None:
             q[k] = -q[k]
 
 
-def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=()) -> list:
+def _without_root(clip, src: Skeleton):
+    """`clip` with the root's track (the root motion) removed."""
+    root = src.names[src.parents.index(-1)]
+    return replace(clip, tracks=[t for t in clip.tracks if t.bone != root])
+
+
+def pose_deltas(kf: str, src: Skeleton, bones) -> dict:
+    """{bone: inv(rest world) @ world} at `kf`'s first frame, for clip_retarget's matched pose.
+
+    A bone whose deviation is measured from this pose sits in the target's rest
+    pose whenever the source plays it.
+    """
+    src = root_identity(src)
+    world = world_positions(_without_root(decode_kf(kf, FPS)[0], src), src, 0)
+    return {b: np.linalg.inv(src.world[src.index[b]]) @ world[src.index[b]]
+            for b in bones if b in src.index}
+
+
+def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=(), deltas=None) -> list:
     """The clip's tracks over `dst`, with every bone's translation filled in.
 
     The root is left out: its track (root motion) stays the source's own.
-    `legs` is (leg tuples, body bone) for leg_ik.plant_feet, or empty.
+    `legs` is (leg tuples, body bone) for leg_ik.plant_feet, or empty;
+    `deltas` (pose_deltas) moves chosen bones' reference off the rest pose.
     """
     src, dst = root_identity(src), root_identity(dst)
-    root = src.names[src.parents.index(-1)]
-    full, clip = clip, replace(clip, tracks=[t for t in clip.tracks if t.bone != root])
+    full, clip = clip, _without_root(clip, src)
     out = retarget_clip(clip, src, dst, {n: n for n in dst.names},
-                        translated=TRANSLATED)
+                        deltas=deltas, translated=TRANSLATED)
     scales = {t.bone: t.scales for t in clip.tracks}
     n = len(clip.times)
     tracks = []
@@ -103,10 +122,10 @@ def _scaled_root(clip, src: Skeleton, stride: float) -> list:
 
 
 def rewrite_kf(src_kf: str, out_kf: str, src: Skeleton, dst: Skeleton,
-               legs=()) -> int:
+               legs=(), deltas=None) -> int:
     """Write `src_kf` retargeted onto `dst` to `out_kf`; returns tracks replaced."""
     clip = decode_kf(src_kf, FPS)[0]
-    tracks = {t.bone: t for t in retarget_tracks(clip, src, dst, legs)}
+    tracks = {t.bone: t for t in retarget_tracks(clip, src, dst, legs, deltas)}
     data = NifFormat.Data()
     with open(src_kf, 'rb') as f:
         data.read(f)

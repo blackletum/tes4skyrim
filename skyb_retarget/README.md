@@ -20,8 +20,8 @@ python -m skyb_retarget.build --skyb SKYBSkinLandDreugh.nif \
    folder and run the normal pipeline on it — `--import-mod`, `--export-only`,
    `--creatures-only`, `--import-only`. Nothing in the converter is special-cased.
 4. **Body**: write the Skyblivion mesh as the project's body NIF (`body.py`).
-5. **Package** `<work>/SKYBLandDreugh.zip`: the ESP, the creature project, the
-   CreatureRuntime animation fragment and `CreatureRuntime.dll`.
+5. **Package** `<work>/SKYBLandDreugh.zip`: the pruned ESP, the creature
+   project, the CreatureRuntime animation fragment and `CreatureRuntime.dll`.
 
 `<work>/report.json` records the ground lift, every capsule stretch, the
 ragdoll bodies dropped and the tracks replaced per clip.
@@ -61,10 +61,11 @@ The Skyblivion rig is 28 flat bones; Oblivion's is the `Bip01` tree.
 | `Tail1`, `Tail2`, `Tail3` (torso, upper torso, head) | `Spine02`, `Spine03`, `Head` |
 | `FangL[00]` (rear abdomen) | `Tail01` |
 | `Arm?[02]`, `Arm?Claw` | `?UpperArm`, `?ForeArm` (the blade is one piece, no pincer) |
+| `Tail2` horns over the head | `?Wing01`..`?Wing05` ([the horns](#the-horns)) |
 | `Leg_?[10..14]` (front) | `?Calf1`, `?Foot1`, `?Foot2`, `?Foot3` |
 | `Leg_?[30..34]` (rear) | `?Calf2`, `?Foot4`, `?Foot5`, `?Foot6` |
 
-Wings, hands and fingers carry no Skyblivion weight.
+Hands and fingers carry no Skyblivion weight.
 
 ## <a id="fitting-the-skeleton"></a>Fitting the skeleton
 
@@ -84,8 +85,41 @@ on the model. Every other bone keeps its rotation relative to its parent.
 on a swung segment stretches by the segment's length ratio; every
 constraint's parent-side frame is re-seated rigidly with the child body, so
 each joint still closes at rest. Bodies on bones that carry no weight and
-have no weighted descendant (wings, hands) are removed with the constraints
+have no weighted descendant (the hands) are removed with the constraints
 naming them.
+
+## <a id="the-horns"></a>The horns
+
+The two horn-like pincers rising over the head are skinned in the Skyblivion
+rig only to `Tail2` (the upper torso), so they could not move. They are the
+counterpart of Oblivion's wing chain, which sweeps over the head in attacks
+and equips. `horns.py` cuts each horn out (`Tail2` vertices with |x| > 5 and
+z > 101), measures base and tip, and spreads its weight down
+`Spine03 -> Wing01..Wing05` by position along the horn (knots at 0, .12, .30,
+.50, .72, .92, blended ±0.05 around each joint). The wing joints are fitted
+onto the horns' cross-sections and swung along them, so the wing bodies stay
+in the ragdoll.
+
+## <a id="arm-reference-pose"></a>Arms and wings measured from the idle
+
+Oblivion's arms rest straight out sideways but its idle folds the forearm
+~100° in to the chest. Measured from the rest pose, every clip carried that
+fold onto the Skyblivion claws ("arms bunched up at the chest"). `REF_POSE`
+measures the arm and wing chains from the first frame of `idle.kf` instead
+(`clip_retarget`'s matched-pose `deltas`), so at idle the claws and horns sit
+in their authored Skyblivion pose and every other clip swings them by
+Oblivion's own amounts (combat stance 9-67°, equip up to 67°, power attacks
+raise the claws overhead).
+
+## <a id="the-package"></a>The package
+
+`esp_prune.py` cuts the ESP to the creature's own records (NPC_, RACE, ARMO,
+ARMA, BPTD, MOVT, IDLE, CSTY, and the voice type the race names: 46 of 210);
+the converter's shared machinery (attribute/AI factions, combat-approach
+packages and quest, humanoid voice types, globals, settings) is left out, and
+the NPC_'s faction memberships with it. The zip carries that ESP, `meshes/`,
+the CreatureRuntime animation fragment and `CreatureRuntime.dll` — no
+TESRuntime/MorrowindRuntime sidecars, no SEQ file. `output/` is untouched.
 
 ## <a id="the-body-mesh"></a>The body mesh
 

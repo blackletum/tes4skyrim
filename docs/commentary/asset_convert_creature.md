@@ -2935,6 +2935,22 @@ Generic names come first, then the stance-prefixed variants — census across al
 exports: `blockhit` 39, `handtohandblockhit` 31, `onehandblockhit` 26. Creatures
 block in ONE stance, so the first authored guard wins.
 
+### <a id="resume-locomotion"></a>Returning to a stride, not to standing
+
+**Code:** `behavior_locomotion.build_default`.
+
+Reported: converted creatures "sometimes slide forward without walking" (land
+dreugh, others). `DefaultBehavior` entered Locomotion only on `moveStart`,
+and every action (attack, recoil, stagger, equip, cast) leaves through the
+root and comes back via `returnToDefault`, restarting `DefaultBehavior` at
+Standing. The engine sends `moveStart` once when movement begins, so an
+actor that attacked or flinched mid-stride came back standing and slid at
+its commanded speed. Vanilla's graphs declare `iSyncIdleLocomotion` (wolf)
+and bind the idle/locomotion machine's `startStateId` to it (the 1HM graphs
+the gun patch extends do the same); a bound start state is written back as
+the machine changes state, so re-entry resumes the stride. Pending in-game
+confirmation.
+
 ### <a id="single-play-clips"></a>Single-play interrupts
 
 The clip fires `returnToDefault` at its end (vanilla-verbatim; the transition

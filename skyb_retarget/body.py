@@ -90,8 +90,11 @@ def _reskin(shape, root, nodes: dict, names: list, w: np.ndarray) -> None:
 
 
 def write_body(skyb_nif: str, skeleton_nif: str, out_nif: str, lift: float,
-               skin_map: dict, split) -> int:
-    """Write the Skyblivion body skinned to the converted skeleton; returns shapes."""
+               mapping) -> int:
+    """Write the Skyblivion body skinned to the converted skeleton; returns shapes.
+
+    `mapping` is (skin_map, split, horns) for weights.mapped_weights.
+    """
     data = read_nif(skyb_nif)
     worlds = node_worlds(data)
     shapes = skinned_shapes(data)
@@ -108,7 +111,8 @@ def write_body(skyb_nif: str, skeleton_nif: str, out_nif: str, lift: float,
     for shape, mesh in zip(shapes, meshes):
         for v in shape.data.vertices:
             v.z += lift
-        names, w = mapped_weights(mesh, skin_map, split)
+        mesh.verts[:, 2] += lift
+        names, w = mapped_weights(mesh, *mapping)
         _reskin(shape, root, nodes, names, _top_influences(w))
     os.makedirs(os.path.dirname(os.path.abspath(out_nif)), exist_ok=True)
     with open(out_nif, 'wb') as f:

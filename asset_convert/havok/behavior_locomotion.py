@@ -213,9 +213,13 @@ def _standing_machine(gb, clips, loco):
 def build_default(gb, clips, speeds):
     """DefaultBehavior: Standing(0) <-> Locomotion(1).
 
+    Its start state is bound to `iSyncIdleLocomotion` (vanilla), so coming
+    back from an attack, recoil or equip mid-stride resumes walking: the
+    engine sends `moveStart` once and never again while the actor moves.
     Returns `(default_sm, loco_sm, gait_eem)` — the machine the root's
     DefaultState wraps, the locomotion sub-machine (None without a forward
     gait) and the walk/run hysteresis modifier (None without a run gait).
+    See: docs/commentary/asset_convert_creature.md#resume-locomotion
     """
     eid = gb.eid
     loco = clips['locomotion']
@@ -227,4 +231,6 @@ def build_default(gb, clips, speeds):
     if loco_sm:
         states.append(gb.state(1, 'LocomotionState', loco_sm.ref,
                                transitions=[(eid['moveStop'], 0, F_LOCAL)]))
-    return gb.state_machine('DefaultBehavior', states), loco_sm, gait_eem
+    bind = gb.binding_set([('startStateId', 'iSyncIdleLocomotion')]).ref
+    return (gb.state_machine('DefaultBehavior', states, binding_ref=bind),
+            loco_sm, gait_eem)
