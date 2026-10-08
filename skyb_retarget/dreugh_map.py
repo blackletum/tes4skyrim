@@ -49,31 +49,18 @@ LEGS = (tuple((f'Bip01 {s}Thigh{h}', f'Bip01 {s}Foot{a}', f'Bip01 {s}Foot{b}',
               for s in 'LR' for h, a, b in ((1, 2, 3), (2, 5, 6))),
         'Bip01 NonAccum')
 
-#: The horns over the head: (side sign, side letter); cut from HORN_SOURCE past HORN_SELECT = (|x|, z).
-HORNS = ((-1.0, 'L'), (1.0, 'R'))
-HORN_SOURCE = 'Tail2'
-HORN_SELECT = (5.0, 101.0)
-
-
-def horn_knots(side: str) -> list:
-    """(bone, fraction along the horn): the wing chain off the upper spine."""
-    wings = [f'Bip01 {side}Wing0{i}' for i in range(1, 6)]
-    return [('Bip01 Spine03', 0.0)] + list(zip(wings, (0.12, 0.30, 0.50, 0.72, 0.92)))
-
-
-#: Chains whose tip follows the source tip's scaled offset in the frame bone (reach_ik): ((names...), frame).
+#: Chains whose joints follow the source joints' scaled offsets in the frame bone (reach_ik): ((names...), frame).
 REACH = (tuple((f'Bip01 {s}UpperArm', f'Bip01 {s}ForeArm', f'Bip01 {s}Hand')
-               for s in 'LR')
-         + tuple(tuple(f'Bip01 {s}Wing0{i}' for i in range(1, 6)) for s in 'LR'),
+               for s in 'LR'),
          'Bip01 Spine03')
 
 #: (clip, blend): reach stance between the Skyblivion rest pose (0) and that clip's first frame (1).
-STANCE = ('idle', 0.5)
+STANCE = ('idle', 0.65)
 
 #: Bones that copy the source's world rotation (twist included) before the reach solve.
 MATCH_BONES = [f'Bip01 {s}{b}' for s in 'LR' for b in
                ('Clavicle', 'UpperArm', 'ForeArm', 'Hand', 'Finger01', 'Finger02',
-                'Finger03', 'Finger04', 'Wing01', 'Wing02', 'Wing03', 'Wing04', 'Wing05')]
+                'Finger03', 'Finger04')]
 
 #: Oblivion bone -> child its segment is turned to point at.
 SWING = {}
@@ -97,7 +84,6 @@ for _side, _sk in (('L', 'L'), ('R', 'R')):
     _chain = ['Clavicle', 'UpperArm', 'ForeArm', 'Hand']
     _front = ['Thigh1', 'Calf1', 'Foot1', 'Foot2', 'Foot3', 'Foot3Nub']
     _back = ['Thigh2', 'Calf2', 'Foot4', 'Foot5', 'Foot6', 'Foot6Nub']
-    _wing = ['Wing01', 'Wing02', 'Wing03', 'Wing04', 'Wing05']
-    for _seq in (_chain, _front, _back, _wing):
+    for _seq in (_chain, _front, _back):
         for _a, _b in zip(_seq, _seq[1:]):
             SWING[f'Bip01 {_side}{_a}'] = f'Bip01 {_side}{_b}'

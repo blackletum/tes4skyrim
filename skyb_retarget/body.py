@@ -93,7 +93,7 @@ def write_body(skyb_nif: str, skeleton_nif: str, out_nif: str, lift: float,
                mapping) -> int:
     """Write the Skyblivion body skinned to the converted skeleton; returns shapes.
 
-    `mapping` is (skin_map, split, horns) for weights.mapped_weights.
+    `mapping` is (skin_map, split) for weights.mapped_weights.
     """
     data = read_nif(skyb_nif)
     worlds = node_worlds(data)

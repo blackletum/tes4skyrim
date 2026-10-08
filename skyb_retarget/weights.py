@@ -1,8 +1,6 @@
 """Move Skyblivion skin weights onto Oblivion bone names."""
 import numpy as np
 
-from skyb_retarget.horns import reweight
-
 
 def _split(mesh, split) -> tuple:
     """(rear weights, front weights) of the split bone, ramped over its y range."""
@@ -13,13 +11,12 @@ def _split(mesh, split) -> tuple:
     return w * (1 - t), w * t
 
 
-def mapped_weights(mesh, skin_map: dict, split, horn_list=()) -> tuple:
+def mapped_weights(mesh, skin_map: dict, split) -> tuple:
     """(Oblivion bone names, (V, B) weights) for every vertex of `mesh`.
 
     `skin_map` {Skyblivion bone: Oblivion bone}; `split` is the
-    dreugh_map.SPLIT_BODY tuple for the one bone shared by two targets;
-    `horn_list` (horns.Horn, fitted on the whole lifted mesh) rigs horns
-    down their chains. Weights stay normalized per vertex.
+    dreugh_map.SPLIT_BODY tuple for the one bone shared by two targets.
+    Weights stay normalized per vertex.
     """
     names, cols = [], []
 
@@ -38,5 +35,5 @@ def mapped_weights(mesh, skin_map: dict, split, horn_list=()) -> tuple:
     unmapped = set(mesh.bones) - set(skin_map) - {split[0]}
     if unmapped:
         raise ValueError(f'Skyblivion bones with no target: {sorted(unmapped)}')
-    names, w = reweight(names, np.stack(cols, axis=1), mesh, horn_list)
+    w = np.stack(cols, axis=1)
     return names, w / np.maximum(w.sum(1, keepdims=True), 1e-9)

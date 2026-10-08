@@ -1,65 +1,53 @@
-"""Put a retargeted limb's tip where the source animation puts its own.
+"""Put a retargeted limb's joints where the source animation puts its own.
 
-Per frame and chain: the source tip's offset from the source chain root,
-taken in a body bone's frame and scaled by the chains' rest length ratio, is
-added to the target chain root; a FABRIK solve from the current (retargeted)
-pose moves the target joints onto it and each bone turns to its solved
-segment, keeping its twist.  Arms and horns of a different build keep the
-source's spread: tips the source never crosses do not cross.
+Per frame and chain: each source joint's offset from the source chain root,
+taken in a body bone's frame and scaled by that joint's rest distance ratio,
+is added to the target chain root; each bone then turns to point at its
+child's spot, keeping its twist.  Arms of a different build keep the source's
+elbow and claw placement: joints the source never crosses do not cross.
 
 See: skyb_retarget/README.md#arm-reference-pose
 """
 import numpy as np
 
 from asset_convert.havok.clip_retarget import Skeleton, mat_to_quat_wxyz, world_positions
-from skyb_retarget.leg_ik import aim, fabrik, locals_at
+from skyb_retarget.leg_ik import aim, locals_at
 
 
-def _offset(world, root: int, tip: int, ref: int) -> np.ndarray:
-    """Tip minus root, in bone `ref`'s frame."""
-    return (world[tip][3, :3] - world[root][3, :3]) @ np.linalg.inv(world[ref][:3, :3])
+def _offset(world, root: int, joint: int, ref: int) -> np.ndarray:
+    """Joint minus root, in bone `ref`'s frame."""
+    return (world[joint][3, :3] - world[root][3, :3]) @ np.linalg.inv(world[ref][:3, :3])
 
 
 class ReachRig:
-    """Index tables, length ratios and stance offsets for `chains` (root, ..., tip names)."""
+    """Index tables, distance ratios and stance offsets for `chains` (root, ..., tip names)."""
 
     def __init__(self, src: Skeleton, dst: Skeleton, chains, frame_bone: str,
                  stance=None):
         """`frame_bone` carries the offsets; `stance` is (source idle worlds, blend).
 
-        With a stance, a tip's offset is the source's scaled movement away
+        With a stance, a joint's offset is the source's scaled movement away
         from its idle, added to a blend of the target's rest offset (0) and
         the source idle's scaled offset (1).
         """
         self.src, self.dst = src, dst
         self.ref = src.index[frame_bone]
-        self.chains = []
-        for names in chains:
-            idx = [dst.index[n] for n in names]
-            rest = _offset(dst.world, idx[0], idx[-1], self.ref)
-            k = float(np.linalg.norm(rest)
-                      / np.linalg.norm(_offset(src.world, idx[0], idx[-1], self.ref)))
-            bias = np.zeros(3)
-            if stance is not None:
-                idle = _offset(stance[0], idx[0], idx[-1], self.ref) * k
-                bias = (1.0 - stance[1]) * (rest - idle)
-            self.chains.append({'idx': idx, 'k': k, 'bias': bias})
+        self.chains = [[dst.index[n] for n in names] for names in chains]
+        self.scale, self.bias = {}, {}
+        for idx in self.chains:
+            for j in idx[1:]:
+                rest = _offset(dst.world, idx[0], j, self.ref)
+                k = float(np.linalg.norm(rest)
+                          / np.linalg.norm(_offset(src.world, idx[0], j, self.ref)))
+                self.scale[j], self.bias[j] = k, np.zeros(3)
+                if stance is not None:
+                    idle = _offset(stance[0], idx[0], j, self.ref) * k
+                    self.bias[j] = (1.0 - stance[1]) * (rest - idle)
 
-    def target(self, chain: dict, src_world, dst_world) -> np.ndarray:
-        """World spot this frame's chain tip should reach."""
-        root, tip = chain['idx'][0], chain['idx'][-1]
-        off = _offset(src_world, root, tip, self.ref) * chain['k'] + chain['bias']
+    def target(self, root: int, joint: int, src_world, dst_world) -> np.ndarray:
+        """World spot this frame's `joint` should reach."""
+        off = _offset(src_world, root, joint, self.ref) * self.scale[joint] + self.bias[joint]
         return dst_world[root][3, :3] + off @ dst_world[self.ref][:3, :3]
-
-
-def _reach(rig: ReachRig, chain: dict, local, world, src_world) -> np.ndarray:
-    """Solve one chain onto its target and turn its bones; returns new worlds."""
-    idx = chain['idx']
-    solved = fabrik(np.array([world[i][3, :3] for i in idx]),
-                    rig.target(chain, src_world, world))
-    for n, (bone, child) in enumerate(zip(idx, idx[1:])):
-        world = aim(local, rig.dst, world, bone, child, solved[n + 1])
-    return world
 
 
 def reach_tips(tracks: list, clip, rig: ReachRig) -> None:
@@ -69,9 +57,9 @@ def reach_tips(tracks: list, clip, rig: ReachRig) -> None:
         src_world = world_positions(clip, rig.src, f)
         local = locals_at(by_name, rig.dst, f)
         world = rig.dst.fk(local)
-        for chain in rig.chains:
-            world = _reach(rig, chain, local, world, src_world)
-        for chain in rig.chains:
-            for i in chain['idx'][:-1]:
-                by_name[rig.dst.names[i]].rotations[f] = mat_to_quat_wxyz(
-                    local[i][:3, :3])
+        for idx in rig.chains:
+            for bone, child in zip(idx, idx[1:]):
+                spot = rig.target(idx[0], child, src_world, world)
+                world = aim(local, rig.dst, world, bone, child, spot)
+                by_name[rig.dst.names[bone]].rotations[f] = mat_to_quat_wxyz(
+                    local[bone][:3, :3])

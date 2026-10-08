@@ -33,7 +33,6 @@ from skyb_retarget.body import write_body
 from skyb_retarget.esp_prune import prune
 from skyb_retarget.fit import (fitted_worlds, ground_lift, landmark_positions,
                                write_fitted_skeleton)
-from skyb_retarget.horns import fit_horn, joints
 from skyb_retarget.skin_data import read_skin
 from skyb_retarget.tes4_plugin import LAND_DREUGH, write_plugin
 
@@ -45,16 +44,11 @@ STAGES = ('--export-only', '--creatures-only', '--import-only')
 
 
 def fit_rig(skyb: str, creature_dir: str) -> dict:
-    """Landmarks, lift, horns, fitted skeleton and the per-clip limb solvers."""
+    """Landmarks, lift, fitted skeleton and the per-clip limb solvers."""
     mesh = read_skin(skyb)
     lift = ground_lift(mesh, dreugh_map.LANDMARKS)
     mesh.verts[:, 2] += lift
-    horn_list = [fit_horn(mesh, sign, dreugh_map.HORN_SOURCE,
-                          dreugh_map.HORN_SELECT, dreugh_map.horn_knots(side))
-                 for sign, side in dreugh_map.HORNS]
     positions = landmark_positions(mesh, dreugh_map.LANDMARKS)
-    for horn in horn_list:
-        positions.update(joints(horn, mesh))
     src = Skeleton.from_nif(os.path.join(creature_dir, 'skeleton.nif'))
     new = fitted_worlds(src, positions, dreugh_map.SWING)
     local = np.array([new[i] if p < 0 else new[i] @ np.linalg.inv(new[p])
@@ -62,18 +56,16 @@ def fit_rig(skyb: str, creature_dir: str) -> dict:
     dst = Skeleton(src.names, src.parents, local)
     clip, blend = dreugh_map.STANCE
     stance = (first_frame_worlds(os.path.join(creature_dir, clip + '.kf'), src), blend)
-    return {'lift': lift, 'src': src, 'new_world': new, 'horns': horn_list,
-            'dst': dst,
+    return {'lift': lift, 'src': src, 'new_world': new, 'dst': dst,
             'limbs': (dreugh_map.LEGS, match_deltas(src, dst, dreugh_map.MATCH_BONES),
                       dreugh_map.REACH + (stance,)),
-            'mapping': (dreugh_map.SKIN_MAP, dreugh_map.SPLIT_BODY, horn_list)}
+            'mapping': (dreugh_map.SKIN_MAP, dreugh_map.SPLIT_BODY)}
 
 
-def _weighted_bones(rig: dict) -> set:
+def _weighted_bones() -> set:
     """Oblivion bones the Skyblivion weights land on."""
     split = dreugh_map.SPLIT_BODY
-    horn_bones = {b for h in rig['horns'] for b, _f in h.knots}
-    return set(dreugh_map.SKIN_MAP.values()) | {split[1], split[2]} | horn_bones
+    return set(dreugh_map.SKIN_MAP.values()) | {split[1], split[2]}
 
 
 def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
@@ -83,7 +75,7 @@ def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
     report = write_fitted_skeleton(
         os.path.join(creature_dir, 'skeleton.nif'),
         os.path.join(out_dir, 'skeleton.nif'), rig['new_world'],
-        dreugh_map.SWING, _weighted_bones(rig))
+        dreugh_map.SWING, _weighted_bones())
     report['clips'] = {}
     for dirpath, _dirs, files in os.walk(creature_dir):
         for fn in sorted(f for f in files if f.lower().endswith('.kf')):

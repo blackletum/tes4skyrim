@@ -30,7 +30,7 @@ ragdoll bodies dropped and the tracks replaced per clip.
 
 - `ragdoll_validate` on the fitted Oblivion skeleton: the same 16 sub-unit
   pivot mismatches the ORIGINAL has (authored), nothing new; 0 violations on
-  the converted skeleton. 2 bodies dropped (hands); 33 kept, the wings on the horns.
+  the converted skeleton. unweighted bodies (hands, wings) dropped.
 - Body NIF skinned at rest reproduces the Skyblivion mesh to 0.0002 units
   (+6.59 lift); its 64 bone nodes equal the converted skeleton's exactly.
 - `animcache_validate` OK; `animdata_index_check`: 31 clips, 0 problems.
@@ -61,7 +61,6 @@ The Skyblivion rig is 28 flat bones; Oblivion's is the `Bip01` tree.
 | `Tail1`, `Tail2`, `Tail3` (torso, upper torso, head) | `Spine02`, `Spine03`, `Head` |
 | `FangL[00]` (rear abdomen) | `Tail01` |
 | `Arm?[02]`, `Arm?Claw` | `?UpperArm`, `?ForeArm` (the blade is one piece, no pincer) |
-| `Tail2` horns over the head | `?Wing01`..`?Wing05` ([the horns](#the-horns)) |
 | `Leg_?[10..14]` (front) | `?Calf1`, `?Foot1`, `?Foot2`, `?Foot3` |
 | `Leg_?[30..34]` (rear) | `?Calf2`, `?Foot4`, `?Foot5`, `?Foot6` |
 
@@ -91,35 +90,33 @@ naming them.
 ## <a id="the-horns"></a>The horns
 
 The two horn-like pincers rising over the head are skinned in the Skyblivion
-rig only to `Tail2` (the upper torso), so they could not move. They are the
-counterpart of Oblivion's wing chain, which sweeps over the head in attacks
-and equips. `horns.py` cuts each horn out (`Tail2` vertices with |x| > 5 and
-z > 101), measures base and tip, and spreads its weight down
-`Spine03 -> Wing01..Wing05` by position along the horn (knots at 0, .12, .30,
-.50, .72, .92, blended ±0.05 around each joint). The wing joints are fitted
-onto the horns' cross-sections and swung along them, so the wing bodies stay
-in the ragdoll.
+rig only to `Tail2` (the upper torso) and stay rigid on `Spine03`. Rigging
+them down Oblivion's wing chain was tried and rejected in game (it looked
+wrong); the wing bones carry no weight, so their ragdoll bodies are dropped.
 
-## <a id="arm-reference-pose"></a>Arms and horns: tip positions, not rotations
+## <a id="arm-reference-pose"></a>Arms: joint positions, not rotations
 
 Rotation retargeting failed both ways. Measured from Oblivion's rest pose
 (arms straight out), its idle's ~100° forearm fold landed on claws that
 already pointed forward: "arms bunched up at the chest", crossing in every
 attack. Measured from Oblivion's idle, the claws sat in the Skyblivion bind
 pose — a near-T modeling pose — and attacks swung them past each other
-(claw gap -35, horns -45 over the head). Blends of the two crossed too.
+(claw gap -35). Placing only the claw tip (FABRIK) left the solver free to
+fold the elbow against the side with the forearm pointing outward.
 
-`reach_ik.py` places the claw (`UpperArm -> ForeArm -> Hand`) and horn
-(`Wing01..Wing05`) tips instead: the Oblivion tip's offset from its chain
-root, in the `Spine03` frame, scaled by the chains' length ratio; the bones
-first copy Oblivion's world rotation (twist) and a FABRIK solve then puts
-the tip on target. `STANCE` sets where the tips sit at rest: Oblivion's idle
-offset plus `(1 - blend) x` the difference to the Skyblivion rest offset,
-with Oblivion's movement away from its idle added on top. Measured at
-blend 0.5, claw-tip gap / Oblivion hand gap: idle 91 / 58 (bind pose 134),
-side swipes 9.7 / 6.4 and 15.6 / -2.0, power attacks 68-91; horns never
-under 21.9 apart (Oblivion's wings 34.6). Lower the blend for a wider
-stance, raise it toward Oblivion's tucked arms.
+`reach_ik.py` places the elbow (`ForeArm`) and the claw tip (`Hand`): each
+Oblivion joint's offset from the `UpperArm` pivot, in the `Spine03` frame,
+scaled by that joint's rest distance ratio; the bones first copy Oblivion's
+world rotation (twist), then `UpperArm` turns toward the elbow spot and
+`ForeArm` toward the claw spot. `STANCE` sets where the joints sit at rest:
+Oblivion's idle offset plus `(1 - blend) x` the difference to the Skyblivion
+rest offset, with Oblivion's movement away from its idle added on top.
+Measured at blend 0.65 (left arm, out/forward/up): idle upper arm
+(.82, .00, -.57), about 35° down, forearm (.29, .94, -.16) pointing forward;
+Oblivion (.51, -.11, -.85) and (-.16, .97, .16), Skyblivion bind
+(.98, .18, .10) and (.73, .52, -.45). Claw gap / Oblivion hand gap: idle
+89 / 58, side swipes 16.2 / -2.0 and -2.0 / 6.4, power attack 88 / 60.
+Lower the blend for a wider stance, raise it toward Oblivion's tucked arms.
 
 ## <a id="the-package"></a>The package
 
