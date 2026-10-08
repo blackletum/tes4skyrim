@@ -101,6 +101,9 @@ sliding, because the Skyblivion legs are shorter and point differently.
 - the leg starts from its authored rest shape and a FABRIK solve over
   hip -> knee -> lower joint -> tip puts the tip on that spot;
 - the stride factor is the leg-length ratio (~0.87), lowered per clip until
-  every target is reachable, and the root motion (on `Bip01` for locomotion,
-  on `Bip01 NonAccum` for idles and attacks) is scaled by the same factor, so
-  a planted foot stays planted and walk/run speeds follow the shorter legs.
+  every target is reachable, and the travel is scaled by the same factor —
+  the root motion on `Bip01` and the in-place lunges/bobs on `Bip01 NonAccum`
+  — so a planted foot stays planted and walk/run speeds follow the shorter
+  legs. The clip is retargeted with its `Bip01` track removed
+  (`retarget_clip` expects root motion split off); keeping it put the walk's
+  travel on `NonAccum` a second time.

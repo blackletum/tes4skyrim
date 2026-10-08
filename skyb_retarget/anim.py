@@ -9,6 +9,7 @@ priorities, visibility channels and everything else authored survive.
 See: skyb_retarget/README.md#retargeting-the-animations
 """
 import os
+from dataclasses import replace
 
 import numpy as np
 
@@ -56,6 +57,8 @@ def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=()) -> list:
     `legs` is (leg tuples, body bone) for leg_ik.plant_feet, or empty.
     """
     src, dst = root_identity(src), root_identity(dst)
+    root = src.names[src.parents.index(-1)]
+    full, clip = clip, replace(clip, tracks=[t for t in clip.tracks if t.bone != root])
     out = retarget_clip(clip, src, dst, {n: n for n in dst.names},
                         translated=TRANSLATED)
     scales = {t.bone: t.scales for t in clip.tracks}
@@ -73,11 +76,10 @@ def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=()) -> list:
         for tr in tracks:
             _one_hemisphere(tr.rotations)
         _scale_travel(tracks, dst, legs[1], rig.stride)
-        tracks += _scaled_root(clip, src, rig.stride)
+        tracks += _scaled_root(full, src, rig.stride)
     return tracks
 
 
-#: Level (x, y) scale with height kept.
 def _level(stride: float) -> np.ndarray:
     """Per-axis factors scaling level travel by `stride`, height untouched."""
     return np.array([stride, stride, 1.0])
