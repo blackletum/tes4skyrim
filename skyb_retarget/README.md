@@ -30,7 +30,7 @@ ragdoll bodies dropped and the tracks replaced per clip.
 
 - `ragdoll_validate` on the fitted Oblivion skeleton: the same 16 sub-unit
   pivot mismatches the ORIGINAL has (authored), nothing new; 0 violations on
-  the converted skeleton. 10 bodies dropped (wings, hands); 25 kept.
+  the converted skeleton. 2 bodies dropped (hands); 33 kept, the wings on the horns.
 - Body NIF skinned at rest reproduces the Skyblivion mesh to 0.0002 units
   (+6.59 lift); its 64 bone nodes equal the converted skeleton's exactly.
 - `animcache_validate` OK; `animdata_index_check`: 31 clips, 0 problems.
