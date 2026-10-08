@@ -20,6 +20,7 @@ from asset_convert.havok.kf_decode import (BoneTrack, controlled_block_target,
 from asset_convert.havok.kf_writer import transform_interpolator
 from pyffi.formats.nif import NifFormat
 from skyb_retarget.leg_ik import LegRig, plant_feet
+from skyb_retarget.reach_ik import ReachRig, reach_tips
 
 #: Bones whose translation follows the source animation (body height, root motion).
 TRANSLATED = ('Bip01', 'Bip01 NonAccum')
@@ -57,24 +58,27 @@ def _without_root(clip, src: Skeleton):
     return replace(clip, tracks=[t for t in clip.tracks if t.bone != root])
 
 
-def pose_deltas(kf: str, src: Skeleton, bones) -> dict:
-    """{bone: inv(rest world) @ world} at `kf`'s first frame, for clip_retarget's matched pose.
-
-    A bone whose deviation is measured from this pose sits in the target's rest
-    pose whenever the source plays it.
-    """
+def first_frame_worlds(kf: str, src: Skeleton) -> np.ndarray:
+    """Source world matrices at `kf`'s first frame (root folded, no root motion)."""
     src = root_identity(src)
-    world = world_positions(_without_root(decode_kf(kf, FPS)[0], src), src, 0)
-    return {b: np.linalg.inv(src.world[src.index[b]]) @ world[src.index[b]]
+    return world_positions(_without_root(decode_kf(kf, FPS)[0], src), src, 0)
+
+
+def match_deltas(src: Skeleton, dst: Skeleton, bones) -> dict:
+    """Matched-pose deltas making `bones` copy the source's world rotation."""
+    src, dst = root_identity(src), root_identity(dst)
+    return {b: np.linalg.inv(src.world[src.index[b]]) @ dst.world[dst.index[b]]
             for b in bones if b in src.index}
 
 
-def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=(), deltas=None) -> list:
+def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=(), deltas=None,
+                    reach=()) -> list:
     """The clip's tracks over `dst`, with every bone's translation filled in.
 
     The root is left out: its track (root motion) stays the source's own.
-    `legs` is (leg tuples, body bone) for leg_ik.plant_feet, or empty;
-    `deltas` (pose_deltas) moves chosen bones' reference off the rest pose.
+    `legs` is (leg tuples, body bone) for leg_ik.plant_feet; `deltas`
+    (match_deltas) copies chosen bones' world rotation; `reach` is (chains,
+    body bone) for reach_ik.reach_tips. Each may be empty.
     """
     src, dst = root_identity(src), root_identity(dst)
     full, clip = clip, _without_root(clip, src)
@@ -89,13 +93,15 @@ def retarget_tracks(clip, src: Skeleton, dst: Skeleton, legs=(), deltas=None) ->
             trans = np.tile(dst.local[dst.index[tr.bone]][3, :3], (n, 1))
         tracks.append(BoneTrack(bone=tr.bone, rotations=tr.rotations,
                                 translations=trans, scales=scales.get(tr.bone)))
+    if reach:
+        reach_tips(tracks, clip, ReachRig(src, dst, *reach))
     if legs:
         rig = LegRig(src, dst, *legs)
         plant_feet(tracks, clip, rig)
-        for tr in tracks:
-            _one_hemisphere(tr.rotations)
         _scale_travel(tracks, dst, legs[1], rig.stride)
         tracks += _scaled_root(full, src, rig.stride)
+    for tr in tracks:
+        _one_hemisphere(tr.rotations)
     return tracks
 
 
@@ -122,10 +128,13 @@ def _scaled_root(clip, src: Skeleton, stride: float) -> list:
 
 
 def rewrite_kf(src_kf: str, out_kf: str, src: Skeleton, dst: Skeleton,
-               legs=(), deltas=None) -> int:
-    """Write `src_kf` retargeted onto `dst` to `out_kf`; returns tracks replaced."""
+               limbs=((), None, ())) -> int:
+    """Write `src_kf` retargeted onto `dst` to `out_kf`; returns tracks replaced.
+
+    `limbs` is (legs, deltas, reach) for retarget_tracks.
+    """
     clip = decode_kf(src_kf, FPS)[0]
-    tracks = {t.bone: t for t in retarget_tracks(clip, src, dst, legs, deltas)}
+    tracks = {t.bone: t for t in retarget_tracks(clip, src, dst, *limbs)}
     data = NifFormat.Data()
     with open(src_kf, 'rb') as f:
         data.read(f)

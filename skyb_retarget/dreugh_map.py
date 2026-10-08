@@ -61,11 +61,19 @@ def horn_knots(side: str) -> list:
     return [('Bip01 Spine03', 0.0)] + list(zip(wings, (0.12, 0.30, 0.50, 0.72, 0.92)))
 
 
-#: (clip, bones) measured from that clip's first frame, not rest: Oblivion arms/wings rest out but idle folded.
-REF_POSE = ('idle', [f'Bip01 {s}{b}' for s in 'LR' for b in
-                     ('Clavicle', 'UpperArm', 'ForeArm', 'Hand', 'Finger01',
-                      'Finger02', 'Finger03', 'Finger04', 'Wing01', 'Wing02',
-                      'Wing03', 'Wing04', 'Wing05')])
+#: Chains whose tip follows the source tip's scaled offset in the frame bone (reach_ik): ((names...), frame).
+REACH = (tuple((f'Bip01 {s}UpperArm', f'Bip01 {s}ForeArm', f'Bip01 {s}Hand')
+               for s in 'LR')
+         + tuple(tuple(f'Bip01 {s}Wing0{i}' for i in range(1, 6)) for s in 'LR'),
+         'Bip01 Spine03')
+
+#: (clip, blend): reach stance between the Skyblivion rest pose (0) and that clip's first frame (1).
+STANCE = ('idle', 0.5)
+
+#: Bones that copy the source's world rotation (twist included) before the reach solve.
+MATCH_BONES = [f'Bip01 {s}{b}' for s in 'LR' for b in
+               ('Clavicle', 'UpperArm', 'ForeArm', 'Hand', 'Finger01', 'Finger02',
+                'Finger03', 'Finger04', 'Wing01', 'Wing02', 'Wing03', 'Wing04', 'Wing05')]
 
 #: Oblivion bone -> child its segment is turned to point at.
 SWING = {}

@@ -28,7 +28,7 @@ from output_layout import (DEFAULT_EXPORT, DEFAULT_OUTPUT, REPO_ROOT,
                            asset_root, plugin_out_root, tree_members,
                            write_mod_zip)
 from skyb_retarget import dreugh_map
-from skyb_retarget.anim import pose_deltas, rewrite_kf
+from skyb_retarget.anim import first_frame_worlds, match_deltas, rewrite_kf
 from skyb_retarget.body import write_body
 from skyb_retarget.esp_prune import prune
 from skyb_retarget.fit import (fitted_worlds, ground_lift, landmark_positions,
@@ -45,7 +45,7 @@ STAGES = ('--export-only', '--creatures-only', '--import-only')
 
 
 def fit_rig(skyb: str, creature_dir: str) -> dict:
-    """Landmarks, lift, horns, fitted skeleton and reference-pose deltas."""
+    """Landmarks, lift, horns, fitted skeleton and the per-clip limb solvers."""
     mesh = read_skin(skyb)
     lift = ground_lift(mesh, dreugh_map.LANDMARKS)
     mesh.verts[:, 2] += lift
@@ -59,10 +59,13 @@ def fit_rig(skyb: str, creature_dir: str) -> dict:
     new = fitted_worlds(src, positions, dreugh_map.SWING)
     local = np.array([new[i] if p < 0 else new[i] @ np.linalg.inv(new[p])
                       for i, p in enumerate(src.parents)])
-    clip, bones = dreugh_map.REF_POSE
+    dst = Skeleton(src.names, src.parents, local)
+    clip, blend = dreugh_map.STANCE
+    stance = (first_frame_worlds(os.path.join(creature_dir, clip + '.kf'), src), blend)
     return {'lift': lift, 'src': src, 'new_world': new, 'horns': horn_list,
-            'dst': Skeleton(src.names, src.parents, local),
-            'deltas': pose_deltas(os.path.join(creature_dir, clip + '.kf'), src, bones),
+            'dst': dst,
+            'limbs': (dreugh_map.LEGS, match_deltas(src, dst, dreugh_map.MATCH_BONES),
+                      dreugh_map.REACH + (stance,)),
             'mapping': (dreugh_map.SKIN_MAP, dreugh_map.SPLIT_BODY, horn_list)}
 
 
@@ -88,7 +91,7 @@ def stage_creature(creature_dir: str, out_dir: str, rig: dict) -> dict:
             rel = os.path.relpath(src_kf, creature_dir)
             report['clips'][rel] = rewrite_kf(
                 src_kf, os.path.join(out_dir, rel), rig['src'], rig['dst'],
-                dreugh_map.LEGS, rig['deltas'])
+                rig["limbs"])
             print(f'  retargeted {rel}: {report["clips"][rel]} tracks', flush=True)
     return report
 

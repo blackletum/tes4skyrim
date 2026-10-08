@@ -95,7 +95,7 @@ def _unit(v) -> np.ndarray:
     return v / n if n > 1e-9 else v
 
 
-def _locals_at(tracks: dict, dst: Skeleton, f: int) -> np.ndarray:
+def locals_at(tracks: dict, dst: Skeleton, f: int) -> np.ndarray:
     """Frame `f`'s local matrices (rest where a bone has no track)."""
     local = dst.local.copy()
     for name, tr in tracks.items():
@@ -104,7 +104,7 @@ def _locals_at(tracks: dict, dst: Skeleton, f: int) -> np.ndarray:
     return local
 
 
-def _aim(local, dst: Skeleton, world, bone: int, child: int, spot) -> np.ndarray:
+def aim(local, dst: Skeleton, world, bone: int, child: int, spot) -> np.ndarray:
     """Turn `bone` so `child`'s pivot lies toward `spot`; returns new worlds."""
     pivot = world[bone][3, :3]
     fix = rotation_between(world[child][3, :3] - pivot, spot - pivot, UP)
@@ -123,7 +123,7 @@ def _plant(rig: LegRig, leg: dict, local, world, src_world) -> np.ndarray:
     goal = rig.target(leg, src_world, world)
     solved = fabrik(np.array([world[i][3, :3] for i in (h, u, lo, t)]), goal)
     for bone, child, spot in ((h, u, solved[1]), (u, lo, solved[2]), (lo, t, solved[3])):
-        world = _aim(local, rig.dst, world, bone, child, spot)
+        world = aim(local, rig.dst, world, bone, child, spot)
     return world
 
 
@@ -157,11 +157,11 @@ def plant_feet(tracks: list, clip, rig: LegRig) -> None:
     """
     by_name = {tr.bone: tr for tr in tracks}
     frames = [(world_positions(clip, rig.src, f),
-               rig.dst.fk(_locals_at(by_name, rig.dst, f)))
+               rig.dst.fk(locals_at(by_name, rig.dst, f)))
               for f in range(len(clip.times))]
     fit_stride(rig, frames)
     for f, (src_world, world) in enumerate(frames):
-        local = _locals_at(by_name, rig.dst, f)
+        local = locals_at(by_name, rig.dst, f)
         for leg in rig.legs:
             world = _plant(rig, leg, local, world, src_world)
         for leg in rig.legs:

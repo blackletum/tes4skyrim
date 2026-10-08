@@ -100,16 +100,26 @@ z > 101), measures base and tip, and spreads its weight down
 onto the horns' cross-sections and swung along them, so the wing bodies stay
 in the ragdoll.
 
-## <a id="arm-reference-pose"></a>Arms and wings measured from the idle
+## <a id="arm-reference-pose"></a>Arms and horns: tip positions, not rotations
 
-Oblivion's arms rest straight out sideways but its idle folds the forearm
-~100° in to the chest. Measured from the rest pose, every clip carried that
-fold onto the Skyblivion claws ("arms bunched up at the chest"). `REF_POSE`
-measures the arm and wing chains from the first frame of `idle.kf` instead
-(`clip_retarget`'s matched-pose `deltas`), so at idle the claws and horns sit
-in their authored Skyblivion pose and every other clip swings them by
-Oblivion's own amounts (combat stance 9-67°, equip up to 67°, power attacks
-raise the claws overhead).
+Rotation retargeting failed both ways. Measured from Oblivion's rest pose
+(arms straight out), its idle's ~100° forearm fold landed on claws that
+already pointed forward: "arms bunched up at the chest", crossing in every
+attack. Measured from Oblivion's idle, the claws sat in the Skyblivion bind
+pose — a near-T modeling pose — and attacks swung them past each other
+(claw gap -35, horns -45 over the head). Blends of the two crossed too.
+
+`reach_ik.py` places the claw (`UpperArm -> ForeArm -> Hand`) and horn
+(`Wing01..Wing05`) tips instead: the Oblivion tip's offset from its chain
+root, in the `Spine03` frame, scaled by the chains' length ratio; the bones
+first copy Oblivion's world rotation (twist) and a FABRIK solve then puts
+the tip on target. `STANCE` sets where the tips sit at rest: Oblivion's idle
+offset plus `(1 - blend) x` the difference to the Skyblivion rest offset,
+with Oblivion's movement away from its idle added on top. Measured at
+blend 0.5, claw-tip gap / Oblivion hand gap: idle 91 / 58 (bind pose 134),
+side swipes 9.7 / 6.4 and 15.6 / -2.0, power attacks 68-91; horns never
+under 21.9 apart (Oblivion's wings 34.6). Lower the blend for a wider
+stance, raise it toward Oblivion's tucked arms.
 
 ## <a id="the-package"></a>The package
 
