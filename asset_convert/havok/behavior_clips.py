@@ -300,9 +300,16 @@ def _claim_gaits(out: dict, kfs: dict, used: set) -> None:
 
 
 def _claim_single_play(out: dict, kfs: dict, used: set) -> None:
-    """Claim the single-play interrupt clips (recoil, stagger, death)."""
-    for state, (names, _e, _x) in SINGLE_PLAY.items():
-        for n in names:
+    """Claim the single-play interrupt clips (recoil, stagger, death).
+
+    The bare stem wins; a creature that authors only a land-stance recoil or
+    stagger (`handtohandrecoil`, `handtohandstagger`) gets that one.
+    See: docs/commentary/asset_convert_creature.md#single-play-clips
+    """
+    land = [p for p, _stance in ATTACK_STANCE_PREFIXES if not p.startswith('swim')]
+    for state, (stems, _e, _x) in SINGLE_PLAY.items():
+        staged = [p + s for p in land for s in stems] if state != 'Death' else []
+        for n in list(stems) + staged:
             if n in kfs:
                 out['single'][state] = kfs[n]
                 used.add(n)

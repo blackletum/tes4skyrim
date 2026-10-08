@@ -2945,6 +2945,13 @@ stop event on exit, so the engine's combat/stagger controllers see completion.
 holds its last pose (dead on the ground). Ragdoll death is handled by the outer
 wrapper state machine.
 
+Recoil and stagger are claimed by the bare stem first, then by a land-stance
+copy (`handtohandrecoil`, `onehandstagger`, ...). Oblivion's land dreugh
+authors only `handtohandrecoil.kf` / `handtohandstagger.kf` (AnimGroups
+`Recoil` / `Stagger`), so the bare-stem table alone left it with no hit
+reaction and no stagger state at all. Death takes no stance copy: it would
+swap a creature's ragdoll death for an animated one.
+
 #### <a id="hit-window-attacks-only"></a>Only an attack clip carries a hit window
 
 **Code:** `_ClipSet._meta` in `asset_convert/havok/hkx_behavior.py`.

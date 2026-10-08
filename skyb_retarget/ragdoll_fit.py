@@ -9,15 +9,13 @@ See: skyb_retarget/README.md#the-ragdoll
 """
 import numpy as np
 
+from asset_convert.collision.collision_constraints import joint_descriptor
 from asset_convert.havok.clip_retarget import mat_to_quat_wxyz, quat_wxyz_to_mat
 from pyffi.formats.nif import NifFormat
 from skyb_retarget.skin_data import block_name
 
 #: Game units per Havok unit in an Oblivion NIF's bhk blocks.
 HAVOK_SCALE = 7.0
-
-#: Constraint descriptor attribute on a constraint (or its sub_constraint).
-_DESCRIPTORS = ('ragdoll', 'limited_hinge', 'hinge', 'prismatic', 'ball_and_socket')
 
 
 def body_world(rb) -> np.ndarray:
@@ -49,16 +47,6 @@ def _put(v, a) -> None:
     v.x, v.y, v.z = map(float, a)
 
 
-def descriptor(constraint):
-    """The limb descriptor a constraint (or a malleable's sub-constraint) holds."""
-    holder = getattr(constraint, 'sub_constraint', None) or constraint
-    for attr in _DESCRIPTORS:
-        d = getattr(holder, attr, None)
-        if d is not None and hasattr(d, 'pivot_a'):
-            return d
-    return None
-
-
 def _side_fields(desc, side: str) -> list:
     """Every vector field of one entity's side ('a' or 'b')."""
     return [n for n in desc._names if n.endswith('_' + side)
@@ -67,7 +55,7 @@ def _side_fields(desc, side: str) -> list:
 
 def reseat_constraint(constraint, owner, worlds_old: dict, worlds_new: dict) -> None:
     """Move the non-owner side's frame so it follows the owner rigidly."""
-    desc = descriptor(constraint)
+    desc = joint_descriptor(constraint)[1]
     ents = list(constraint.entities)
     if desc is None or len(ents) != 2:
         return
