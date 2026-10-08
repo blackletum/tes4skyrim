@@ -321,7 +321,7 @@ def _palette_string(palette_block, offset: int) -> Optional[str]:
     return raw[offset:end].decode('latin-1')
 
 
-def _controlled_block_target(cb) -> Optional[str]:
+def controlled_block_target(cb) -> Optional[str]:
     """Target node name of a controlled block (palette or direct field)."""
     name = None
     if getattr(cb, 'string_palette', None) is not None:
@@ -423,7 +423,7 @@ def _decode_sequence(seq, fps: float) -> DecodedClip:
                                    bytes(tk.value).decode('latin-1')))
 
     for cb in seq.controlled_blocks:
-        bone = _controlled_block_target(cb)
+        bone = controlled_block_target(cb)
         if not bone:
             clip.skipped_blocks.append(('?', 'unresolvable target name'))
             continue
