@@ -6212,6 +6212,23 @@ TES4Polyfill had no ReleaseBreakaway, so every script calling it failed to
 compile), and the stale `.pex` ships under the same script name as the
 master's.
 
+### <a id="stale-master-static-scripts"></a>A dependent refuses a root with stale static scripts
+
+**Code:** `papyrus_compile._root_statics_current`.
+
+A user who converted Oblivion.esm with an older build, updated the converter,
+and then converted only The Lost Spires.esp got ~190 compile failures: the
+ESP's generated bodies call the current statics (`LineBegan` with its third
+`aiInfo` argument, `TES4_Attributes`, `TES4_Chargen`), but the header path
+held the master's old copies. Compiling the dependent against the converter's
+own `static_scripts/` would not be enough: in game the master's old
+`TES4Polyfill.pex` still answers the call and Papyrus rejects the argument
+count. So before compiling a dependent, the compile phase compares the
+masterless root's `scripts/source/` copies against `static_scripts/`. If any
+differ or are missing, it compiles nothing, fails the stage, and prints the
+command that fixes it: `python convert.py -f <root> --scripts-only`. The
+dependent's stage never writes into another plugin's output.
+
 ## <a id="quest-fragments"></a>Quest-stage fragment scripts
 
 **Code:** `script_convert/quest_fragments.py` (`quest_fragment_psc`), written by
